@@ -810,9 +810,9 @@ async def register_user(
             message="Failed to create user",
         )
 
-    # Send verification email with plain text template
+    # Send welcome email
     if verification_token and user.email:
-        subject = "Verify Your Email Address"
+        subject = "Welcome to Nora!"
         body = f"""Hi {user.full_name},
 
 We're so glad to have you here. You're one step closer to experiencing a calmer,
@@ -822,12 +822,7 @@ Whether you're navigating pregnancy, caring for a newborn, or guiding a growing
 child — Nora is here with trusted answers, gentle guidance, and support
 whenever you need it.
 
-Please use the verification code below to confirm your email and complete your setup:
-
-{verification_token}
-
-This verification code will expire in
-{EmailVerificationService.TOKEN_EXPIRY_MINUTES} minutes.
+Your account is now active and ready to use. You can start chatting with Nora right away!
 
 Thanks,
 The Nora Team"""
@@ -849,7 +844,7 @@ The Nora Team"""
     logger.info("Registration successful for user: %s", user.email)
     return success_response(
         status_code=status.HTTP_201_CREATED,
-        message="User registered. Please check your email to verify your account.",
+        message="Welcome to Nora! Your account has been created successfully.",
         data=user_response.model_dump(),
     )
 

@@ -1,7 +1,7 @@
 from fastapi.exceptions import RequestValidationError, HTTPException
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
 from api.utils.responses import validation_error_response
 from api.v1.routes import app as api_v1_router
 from collections import defaultdict
@@ -10,6 +10,7 @@ import logging
 
 
 from api.utils.exception_handlers import (request_validation_exception_handler, http_exception_handler)
+from api.v1.routes.gallery_search import router as search_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +46,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return validation_error_response(dict(formatted_errors))
 
 app.include_router(api_v1_router, prefix="/api/v1")
+app.include_router(search_router, prefix="/api")
+
+# Mount static files for serving uploaded images
+app.mount("/static", StaticFiles(directory="uploads"), name="static")
+
 
 
 # Register handlers

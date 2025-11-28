@@ -43,3 +43,5 @@ google-auth-oauthlib>=1.1.0
 
 #Monitoring
 sentry-sdk[fastapi]==1.40.0
+# Image Procesing
+Pillow==10.1.0

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from sqlalchemy import nulls_last, asc
+from sqlalchemy import nulls_last, asc, desc
 
 from api.v1.models.task import Task
 from api.v1.models.user.user import User
@@ -72,7 +72,9 @@ class TaskService:
             user_id: UUID,
             page: int = 1,
             per_page: int = 10,
-            status: Optional[str] = None
+            status: Optional[str] = None,
+            order_by: Optional[str] = "due_date",
+            order_direction: Optional[str] = "asc"
     ):
 
         try:
@@ -81,7 +83,15 @@ class TaskService:
             if status:
                 query = query.filter(Task.status == status)
 
-            query = query.order_by(nulls_last(asc(Task.due_date)))
+            # Apply ordering
+            order_field = getattr(Task, order_by, Task.due_date)
+            order_func = asc if order_direction == "asc" else desc
+
+            # Use nulls_last for fields that can be null
+            if order_by in ["due_date", "completed_at"]:
+                query = query.order_by(nulls_last(order_func(order_field)))
+            else:
+                query = query.order_by(order_func(order_field))
 
             total_count = query.count()
 

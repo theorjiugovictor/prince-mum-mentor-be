@@ -35,3 +35,7 @@ class ChatSessionOut(BaseModel):
     title: str
     created_at: datetime
     message_count: Optional[int] = 0
+
+
+class ConversationTitleUpdate(BaseModel):
+    title: str

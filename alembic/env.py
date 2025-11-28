@@ -19,6 +19,7 @@ from api.v1.models.chat_session import *
 from api.v1.models.chat_message import *
 from api.v1.models.chat_session import ChatSession
 from api.v1.models.chat_message import ChatMessage
+from api.v1.models import *
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config

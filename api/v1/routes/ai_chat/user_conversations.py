@@ -7,6 +7,8 @@ from api.v1.models.user.user import User
 from api.v1.models.chat_session import ChatSession
 from api.utils.responses import success_response
 from api.utils.logger import logger
+from api.v1.schemas.chat import ConversationTitleUpdate
+from api.v1.services.chat.chat_service import ChatService
 
 router = APIRouter(prefix="/chats", tags=["AI Chat"])
 
@@ -67,3 +69,24 @@ def list_user_conversations(
     except Exception as e:
         logger.error(f"Error listing chat session tiles | user_id={current_user.id} | error={str(e)}")
         raise
+
+
+@router.patch("/{conversation_id}/title")
+def update_chat_title(
+        conversation_id: str,
+        payload: ConversationTitleUpdate,
+        session: Session = Depends(get_db),
+        current_user=Depends(get_current_user),
+):
+    updated, error = ChatService.update_title(
+        session=session,
+        conversation_id=conversation_id,
+        user_id=current_user.id,
+        new_title=payload.title,
+    )
+
+    return success_response(
+        status_code=status.HTTP_200_OK,
+        message="Chat session title updated successfully.",
+        data=updated,
+    )

@@ -201,6 +201,10 @@ class ChildProfile(BaseModel):
     date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     gender: Mapped[str | None] = mapped_column(String(50),nullable=True)
+    
+    # added birth_order and profile_picture_url to match the design of the child profile fields
+    birth_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    profile_picture_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     profile_setup: Mapped["ProfileSetup"] = relationship(back_populates="children")
 
 

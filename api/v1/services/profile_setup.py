@@ -157,6 +157,7 @@ class ProfileSetupService:
         ).all()
 
         return {
+            "id": str(setup.id),
             "user_id": str(setup.user_id),
             "mom_status": setup.mom_status,
             "goals": setup.goals,

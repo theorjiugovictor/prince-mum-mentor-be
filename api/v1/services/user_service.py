@@ -42,7 +42,7 @@ class UserService:
                 full_name=user_data.full_name.strip(),
                 email=user_data.email.lower() if user_data.email else None,
                 password_hash=hash_password(user_data.password),
-                email_verified=False,
+                email_verified=True, 
                 phone_verified=False
             )
             
