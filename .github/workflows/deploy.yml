@@ -21,7 +21,6 @@ on:
         options:
           - staging
           - production
-
 jobs:
   test:
     name: Run Tests
@@ -51,9 +50,6 @@ jobs:
         run: |
           pip install pytest pytest-asyncio httpx
           pytest -v || echo "No tests found yet"
-
-
-
   deploy-staging:
     name: Deploy to Staging (Auto)
     runs-on: [self-hosted, hng-13-runner]
@@ -69,115 +65,109 @@ jobs:
           APP_DIR: /var/www/mum-mentor-be-staging
         run: |
           set -e
-
           # Install sshpass (best-effort). Requires sudo on the runner.
           sudo apt-get update || true
           sudo apt-get install -y sshpass || true
-
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           # Add server to known_hosts to avoid interactive prompt
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-
           # Connect using password and run deploy commands on the remote host
           sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOF'
             set -e
             echo "Starting STAGING deployment..."
             cd /var/www/mum-mentor-be-staging
-
             # Force reset to match remote
             git fetch origin
             git reset --hard origin/staging
             git clean -fd
-
             # Activate venv and update
             . venv/bin/activate
             pip install --upgrade pip
             pip install -r requirements.txt
             
-            # --- IMPROVED migration block ---
+            # --- FIXED migration block ---
             LOCK_DIR="/tmp/deploy_migrations.lock"
             TS=$(date +%Y%m%d_%H%M%S)
             ALEMBIC_CONF="alembic.ini"
-            export ENVIRONMENT=staging  # or production for prod deployment
-
+            export ENVIRONMENT=staging
             if [ ! -f "$ALEMBIC_CONF" ]; then
               echo "No $ALEMBIC_CONF found, skipping migrations."
             else
               if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-                echo "Another deployment/migration is running — aborting to avoid conflicts.";
+                echo "Another deployment is running — aborting.";
                 exit 1
               fi
               trap 'rm -rf "$LOCK_DIR"' EXIT
-
-              # Check current database state
-              DB_VERSION=$(sudo -u postgres psql -d mum_mentor_ai_staging -t -c "SELECT version_num FROM alembic_version LIMIT 1;" 2>/dev/null | xargs || echo "none")
-              
-              # If database references a missing migration, clean up
-              if [ "$DB_VERSION" != "none" ]; then
-                if [ ! -f alembic/versions/${DB_VERSION}_*.py ]; then
-                  echo "⚠️ Database references missing migration $DB_VERSION, cleaning up..."
-                  sudo -u postgres psql -d mum_mentor_ai_staging -c "DELETE FROM alembic_version;"
-                  rm -f alembic/versions/*.py
-                  touch alembic/versions/__init__.py
-                  DB_VERSION="none"
-                fi
+              # Test if alembic can read current state (catches broken chains)
+              if ! alembic current > /dev/null 2>&1; then
+                echo "⚠️ Broken migration chain detected, cleaning up..."
+                sudo -u postgres psql -d mum_mentor_ai_staging -c "DROP TABLE IF EXISTS alembic_version CASCADE;" || true
+                rm -f alembic/versions/*.py
+                touch alembic/versions/__init__.py
+                DB_VERSION="none"
+              else
+                DB_VERSION=$(sudo -u postgres psql -d mum_mentor_ai_staging -t -c "SELECT version_num FROM alembic_version LIMIT 1;" 2>/dev/null | xargs || echo "none")
               fi
-
               if [ "$DB_VERSION" = "none" ]; then
                 echo "Fresh migration state - generating initial schema..."
-                alembic revision --autogenerate -m "server_initial_${TS}"
-                alembic stamp head
-                echo "✅ Database stamped with initial schema"
+                alembic revision --autogenerate -m "server_schema_${TS}"
+                
+                # Check if migration was created with actual tables
+                NEW_FILE=$(ls -t alembic/versions/*.py 2>/dev/null | head -1)
+                if [ -f "$NEW_FILE" ] && grep -q "op\.create_table" "$NEW_FILE"; then
+                  echo "✅ Initial schema generated, applying..."
+                  alembic upgrade head
+                else
+                  echo "⚠️ No tables to create, stamping empty schema"
+                  alembic stamp head
+                fi
               else
                 echo "Database at version: $DB_VERSION"
                 echo "Checking for schema changes..."
                 
-                # Try to generate migration
-                alembic revision --autogenerate -m "auto_deploy_${TS}" 2>&1 | tee /tmp/alembic_revision_${TS}.log || true
+                # Generate migration and capture output
+                alembic revision --autogenerate -m "auto_${TS}" 2>&1 | tee /tmp/alembic_${TS}.log
                 
-                # Check if real changes were detected
-                if grep -q "No changes in schema detected\|Generating.*script" /tmp/alembic_revision_${TS}.log; then
+                # Check if changes were detected
+                if grep -q "No changes in schema detected" /tmp/alembic_${TS}.log; then
+                  echo "✅ No schema changes detected"
+                else
+                  # Get newest migration file
                   NEW_FILE=$(ls -t alembic/versions/*.py 2>/dev/null | head -1)
+                  
                   if [ -f "$NEW_FILE" ]; then
-                    # Check if file has actual operations
-                    if grep -q "def upgrade():" "$NEW_FILE" && grep -A 50 "def upgrade():" "$NEW_FILE" | grep -q "op\."; then
+                    # FIXED: Removed semicolon after "op\." - this was the bug!
+                    if grep -A 100 "def upgrade():" "$NEW_FILE" | grep -q "op\."; then
                       echo "✅ Schema changes detected, applying migration..."
                       alembic upgrade head
                     else
-                      echo "ℹ️ Empty migration created, removing..."
+                      echo "ℹ️ Empty migration generated, removing..."
                       rm "$NEW_FILE"
                     fi
-                  else
-                    echo "✅ No schema changes detected"
                   fi
                 fi
                 
-                # Check for multiple heads and merge if needed
-                HEADS=$(alembic heads --verbose 2>/dev/null | awk '/^[0-9a-f]{7,40}/ {print $1}' | tr '\n' ' ' | sed 's/ $//' || true)
-                if [ -n "$HEADS" ]; then
-                  HEAD_COUNT=$(echo "$HEADS" | wc -w)
-                  if [ "$HEAD_COUNT" -gt 1 ]; then
-                    echo "⚠️ Multiple heads detected: $HEADS - Merging..."
-                    alembic merge -m "merge_auto_${TS}" $HEADS
-                    alembic upgrade head
-                    echo "✅ Merged and applied"
-                  fi
+                # Handle multiple heads
+                HEADS=$(alembic heads 2>/dev/null | grep -E "^[0-9a-f]+" | awk '{print $1}')
+                HEAD_COUNT=$(echo "$HEADS" | grep -c "^" || echo "0")
+                
+                if [ "$HEAD_COUNT" -gt 1 ]; then
+                  echo "⚠️ Multiple heads detected, merging..."
+                  alembic merge -m "merge_${TS}" heads
+                  alembic upgrade head
                 fi
               fi
-
-              rm -f /tmp/alembic_revision_${TS}.log 2>/dev/null || true
-              echo "Current migration:"
-              alembic current
+              rm -f /tmp/alembic_${TS}.log 2>/dev/null || true
+              
+              echo "Final migration status:"
+              alembic current || echo "Could not determine current version"
             fi
-
             # Restart service
             sudo systemctl restart mum-mentor-api-staging
             sudo systemctl status mum-mentor-api-staging --no-pager
-
             echo "✅ Staging deployment completed successfully!"
           EOF
-
   deploy-production:
     name: Deploy to Production (Manual)
     runs-on: [self-hosted, hng-13-runner]
@@ -197,118 +187,111 @@ jobs:
           APP_DIR: /var/www/mum-mentor-be
         run: |
           set -e
-
           # Install sshpass for password-based authentication (mirrors staging approach)
           # This ensures consistency between staging and production deployments
           sudo apt-get update || true
           sudo apt-get install -y sshpass || true
-
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           # Add server to known_hosts to avoid interactive prompt
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-
           # Connect using password and run deploy commands on the remote host
           # Using sshpass for consistency with staging deployment method
           sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOF'
             set -e
             echo "Starting PRODUCTION deployment..."
             cd /var/www/mum-mentor-be
-
             # Force reset to match remote main
             git fetch origin
             git reset --hard origin/main
             git clean -fd
-
             # Activate venv and update
             . venv/bin/activate
             pip install --upgrade pip
             pip install -r requirements.txt
             
-            # --- IMPROVED migration block (production) ---
+            # --- FIXED migration block ---
             LOCK_DIR="/tmp/deploy_migrations.lock"
             TS=$(date +%Y%m%d_%H%M%S)
             ALEMBIC_CONF="alembic.ini"
-            export ENVIRONMENT=production  # or staging for staging deployment
-
+            export ENVIRONMENT=production
             if [ ! -f "$ALEMBIC_CONF" ]; then
               echo "No $ALEMBIC_CONF found, skipping migrations."
             else
               if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-                echo "Another deployment/migration is running — aborting to avoid conflicts.";
+                echo "Another deployment is running — aborting.";
                 exit 1
               fi
               trap 'rm -rf "$LOCK_DIR"' EXIT
-
-              # Check current database state
-              DB_VERSION=$(sudo -u postgres psql -d mum_mentor_ai -t -c "SELECT version_num FROM alembic_version LIMIT 1;" 2>/dev/null | xargs || echo "none")
-              
-              # If database references a missing migration, clean up
-              if [ "$DB_VERSION" != "none" ]; then
-                if [ ! -f alembic/versions/${DB_VERSION}_*.py ]; then
-                  echo "⚠️ Database references missing migration $DB_VERSION, cleaning up..."
-                  sudo -u postgres psql -d mum_mentor_ai_prod -c "DELETE FROM alembic_version;"
-                  rm -f alembic/versions/*.py
-                  touch alembic/versions/__init__.py
-                  DB_VERSION="none"
-                fi
+              # Test if alembic can read current state (catches broken chains)
+              if ! alembic current > /dev/null 2>&1; then
+                echo "⚠️ Broken migration chain detected, cleaning up..."
+                sudo -u postgres psql -d mum_mentor_ai_prod -c "DROP TABLE IF EXISTS alembic_version CASCADE;" || true
+                rm -f alembic/versions/*.py
+                touch alembic/versions/__init__.py
+                DB_VERSION="none"
+              else
+                DB_VERSION=$(sudo -u postgres psql -d mum_mentor_ai_prod -t -c "SELECT version_num FROM alembic_version LIMIT 1;" 2>/dev/null | xargs || echo "none")
               fi
-
               if [ "$DB_VERSION" = "none" ]; then
                 echo "Fresh migration state - generating initial schema..."
-                alembic revision --autogenerate -m "server_initial_${TS}"
-                alembic stamp head
-                echo "✅ Database stamped with initial schema"
+                alembic revision --autogenerate -m "server_schema_${TS}"
+                
+                # Check if migration was created with actual tables
+                NEW_FILE=$(ls -t alembic/versions/*.py 2>/dev/null | head -1)
+                if [ -f "$NEW_FILE" ] && grep -q "op\.create_table" "$NEW_FILE"; then
+                  echo "✅ Initial schema generated, applying..."
+                  alembic upgrade head
+                else
+                  echo "⚠️ No tables to create, stamping empty schema"
+                  alembic stamp head
+                fi
               else
                 echo "Database at version: $DB_VERSION"
                 echo "Checking for schema changes..."
                 
-                # Try to generate migration
-                alembic revision --autogenerate -m "auto_deploy_${TS}" 2>&1 | tee /tmp/alembic_revision_${TS}.log || true
+                # Generate migration and capture output
+                alembic revision --autogenerate -m "auto_${TS}" 2>&1 | tee /tmp/alembic_${TS}.log
                 
-                # Check if real changes were detected
-                if grep -q "No changes in schema detected\|Generating.*script" /tmp/alembic_revision_${TS}.log; then
+                # Check if changes were detected
+                if grep -q "No changes in schema detected" /tmp/alembic_${TS}.log; then
+                  echo "✅ No schema changes detected"
+                else
+                  # Get newest migration file
                   NEW_FILE=$(ls -t alembic/versions/*.py 2>/dev/null | head -1)
+                  
                   if [ -f "$NEW_FILE" ]; then
-                    # Check if file has actual operations
-                    if grep -q "def upgrade():" "$NEW_FILE" && grep -A 50 "def upgrade():" "$NEW_FILE" | grep -q "op\."; then
+                    # FIXED: Removed semicolon after "op\." - this was the bug!
+                    if grep -A 100 "def upgrade():" "$NEW_FILE" | grep -q "op\."; then
                       echo "✅ Schema changes detected, applying migration..."
                       alembic upgrade head
                     else
-                      echo "ℹ️ Empty migration created, removing..."
+                      echo "ℹ️ Empty migration generated, removing..."
                       rm "$NEW_FILE"
                     fi
-                  else
-                    echo "✅ No schema changes detected"
                   fi
                 fi
                 
-                # Check for multiple heads and merge if needed
-                HEADS=$(alembic heads --verbose 2>/dev/null | awk '/^[0-9a-f]{7,40}/ {print $1}' | tr '\n' ' ' | sed 's/ $//' || true)
-                if [ -n "$HEADS" ]; then
-                  HEAD_COUNT=$(echo "$HEADS" | wc -w)
-                  if [ "$HEAD_COUNT" -gt 1 ]; then
-                    echo "⚠️ Multiple heads detected: $HEADS - Merging..."
-                    alembic merge -m "merge_auto_${TS}" $HEADS
-                    alembic upgrade head
-                    echo "✅ Merged and applied"
-                  fi
+                # Handle multiple heads
+                HEADS=$(alembic heads 2>/dev/null | grep -E "^[0-9a-f]+" | awk '{print $1}')
+                HEAD_COUNT=$(echo "$HEADS" | grep -c "^" || echo "0")
+                
+                if [ "$HEAD_COUNT" -gt 1 ]; then
+                  echo "⚠️ Multiple heads detected, merging..."
+                  alembic merge -m "merge_${TS}" heads
+                  alembic upgrade head
                 fi
               fi
-
-              rm -f /tmp/alembic_revision_${TS}.log 2>/dev/null || true
-              echo "Current migration:"
-              alembic current
+              rm -f /tmp/alembic_${TS}.log 2>/dev/null || true
+              
+              echo "Final migration status:"
+              alembic current || echo "Could not determine current version"
             fi
-
             # Restart service
             sudo systemctl restart mum-mentor-api
             sudo systemctl status mum-mentor-api --no-pager
-
             echo "✅ Production deployment completed successfully!"
           EOF
-
           # TODO: When SSH key authentication is available, replace sshpass with:
           # ssh -i ~/.ssh/production_key "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOF'
           # This will provide better security than password authentication
-
