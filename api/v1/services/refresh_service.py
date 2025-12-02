@@ -5,12 +5,15 @@ import jwt
 from datetime import datetime, timezone, timedelta
 from typing import Tuple, Optional, Dict, Any
 
-from api.utils import auth_utils
 from api.v1.models.user.user import UserAuthSession, User, UserActivityLog
 from api.utils.logger import logger
+from api.utils.login import create_access_token, create_refresh_token
+
 
 def _hash_token(token: str) -> str:
-    key = os.getenv("JWT_SECRET").encode() if isinstance(os.getenv("JWT_SECRET"), str) else os.getenv("JWT_SECRET")
+    key = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY")
+    if isinstance(key, str):
+        key = key.encode()
     return hmac.new(key, token.encode(), hashlib.sha256).hexdigest()
 
 
@@ -20,27 +23,29 @@ def refresh_access_token_service(
     """Service to refresh tokens. Returns (data, error)."""
     now = datetime.now(timezone.utc)
     try:
-        # verify token signature & expiry
+        # Verify token signature & expiry
+        JWT_SECRET = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY")
+        ALGORITHM = os.getenv("ALGORITHM", "HS256")
+        
         try:
-            payload = auth_utils.verify_reset_password_token(incoming_token) if False else None
-        except Exception:
-            # fall back to decode with jwt since auth_utils doesn't expose a refresh verifier
-          
-            JWT_SECRET = os.getenv("JWT_SECRET")
-            ALGORITHM = os.getenv("ALGORITHM", "HS256")
-            try:
-                payload = jwt.decode(incoming_token, JWT_SECRET, ALGORITHM)
-            except Exception as e:
-                return None, {"status_code": 401, "message": "Invalid or expired refresh token."}
+            payload = jwt.decode(incoming_token, JWT_SECRET, algorithms=[ALGORITHM])
+        except Exception as e:
+            return None, {"status_code": 401, "message": "Invalid or expired refresh token."}
+
+        # Extract user_id from nested structure
+        user_id = payload.get("user", {}).get("user_id")
+        if not user_id:
+            return None, {"status_code": 401, "message": "Invalid token payload"}
 
         token_hash = _hash_token(incoming_token)
 
-        # Support both real DB sessions (which use BaseModel.fetch_unique)
-        # and test/mocked sessions that provide a .query(...) API.
+        # Find session by hashed token
         session = None
         if hasattr(db, "query"):
             try:
-                session = db.query(UserAuthSession).filter(UserAuthSession.refresh_token == token_hash).first()
+                session = db.query(UserAuthSession).filter(
+                    UserAuthSession.refresh_token == token_hash
+                ).first()
             except Exception:
                 session = None
 
@@ -59,7 +64,7 @@ def refresh_access_token_service(
         if session.device_id and device_header and session.device_id != device_header:
             return None, {"status_code": 403, "message": "Device mismatch for refresh token."}
 
-        # Load user, again supporting both real and mocked DB session styles
+        # Load user
         if hasattr(db, "query"):
             try:
                 user = db.query(User).filter(User.id == session.user_id).first()
@@ -67,14 +72,15 @@ def refresh_access_token_service(
                 user = None
         else:
             user = User.fetch_unique(db, id=session.user_id)
+            
         if not user:
             return None, {"status_code": 401, "message": "User not found for token."}
 
-        # use auth_utils to create tokens
-        access_token = auth_utils.create_access_token(user.id, user.role)
-        new_refresh = auth_utils.create_refresh_token(user.id, user.role)
+        # Create new tokens using utils/login
+        access_token, _ = create_access_token(user.id, user.role)
+        new_refresh, _ = create_refresh_token(user.id, user.role)
 
-        # rotate stored token
+        # Rotate stored token (hash it)
         session.refresh_token = _hash_token(new_refresh)
         session.expires_at = datetime.now(timezone.utc) + timedelta(days=7)
         session.updated_at = now

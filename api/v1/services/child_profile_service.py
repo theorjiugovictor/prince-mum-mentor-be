@@ -1,10 +1,12 @@
+
 """
-Service layer for child profile operations.
+Service layer for child profile operations with full image URLs.
 """
 
 from datetime import date, datetime
 from typing import Optional, List
 from uuid import UUID
+import os
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -22,6 +24,32 @@ from api.utils.logger import logger
 
 class ChildProfileService:
     """Service for managing child profiles."""
+
+    @staticmethod
+    def _get_full_image_url(relative_url: Optional[str]) -> Optional[str]:
+        """
+        Convert relative image URL to full absolute URL.
+        
+        Args:
+            relative_url: Relative URL like /files/child_profiles/xxx.jpg
+            
+        Returns:
+            Full URL like https://api.staging.kaizen.emerj.net/files/child_profiles/xxx.jpg
+        """
+        if not relative_url:
+            return None
+        
+        if relative_url.startswith("http"):
+            return relative_url
+        
+       
+        base_url = os.getenv("API_BASE_URL", "https://api.staging.kaizen.emerj.net")
+        
+        
+        base_url = base_url.rstrip('/')
+        relative_url = relative_url if relative_url.startswith('/') else f'/{relative_url}'
+        
+        return f"{base_url}{relative_url}"
 
     @staticmethod
     def _calculate_age(date_of_birth: Optional[date]) -> Optional[int]:
@@ -49,7 +77,10 @@ class ChildProfileService:
             "due_date": child.due_date,
             "gender": child.gender,
             "birth_order": child.birth_order,
-            "profile_picture_url": child.profile_picture_url,
+            # Convert to full URL
+            "profile_picture_url": ChildProfileService._get_full_image_url(
+                child.profile_picture_url
+            ),
             "age": ChildProfileService._calculate_age(child.date_of_birth),
             "created_at": child.created_at,
             "updated_at": child.updated_at,

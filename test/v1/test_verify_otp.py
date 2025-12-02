@@ -1,5 +1,6 @@
 import pytest
 from datetime import datetime, timedelta, timezone
+
 from fastapi import HTTPException, status
 
 from api.v1.schemas.verify_otp import VerifyOTPRequest
@@ -22,7 +23,9 @@ class TestVerifyOTPService:
         db_session.commit()
         db_session.refresh(otp)
 
-        data = VerifyOTPRequest(user_id=str(test_user.id), otp_code="123456", otp_type="email_verification")
+        data = VerifyOTPRequest(
+            user_id=str(test_user.id), otp_code="123456", otp_type="email_verification"
+        )
         user = VerifyOTPService(db_session, data)
 
         assert user.email_verified is True
@@ -42,7 +45,9 @@ class TestVerifyOTPService:
         db_session.commit()
         db_session.refresh(otp)
 
-        data = VerifyOTPRequest(user_id=str(test_user.id), otp_code="1111", otp_type="email_verification")
+        data = VerifyOTPRequest(
+            user_id=str(test_user.id), otp_code="1111", otp_type="email_verification"
+        )
 
         with pytest.raises(HTTPException) as exc:
             VerifyOTPService(db_session, data)
@@ -65,7 +70,9 @@ class TestVerifyOTPService:
         db_session.commit()
         db_session.refresh(otp)
 
-        data = VerifyOTPRequest(user_id=str(test_user.id), otp_code="2222", otp_type="email_verification")
+        data = VerifyOTPRequest(
+            user_id=str(test_user.id), otp_code="2222", otp_type="email_verification"
+        )
 
         with pytest.raises(HTTPException) as exc:
             VerifyOTPService(db_session, data)
@@ -90,7 +97,11 @@ class TestVerifyOTPService:
 
         # Make 3 failed attempts
         for i in range(3):
-            data = VerifyOTPRequest(user_id=str(test_user.id), otp_code="9999", otp_type="email_verification")
+            data = VerifyOTPRequest(
+                user_id=str(test_user.id),
+                otp_code="9999",
+                otp_type="email_verification",
+            )
             with pytest.raises(HTTPException):
                 VerifyOTPService(db_session, data)
             db_session.refresh(otp)
@@ -100,7 +111,9 @@ class TestVerifyOTPService:
         assert otp.attempts == 3
 
         # Try with correct code - should still fail because it's locked
-        data = VerifyOTPRequest(user_id=str(test_user.id), otp_code="5555", otp_type="email_verification")
+        data = VerifyOTPRequest(
+            user_id=str(test_user.id), otp_code="5555", otp_type="email_verification"
+        )
         with pytest.raises(HTTPException) as exc:
             VerifyOTPService(db_session, data)
 
@@ -121,11 +134,14 @@ class TestVerifyOTPService:
         db_session.commit()
         db_session.refresh(otp)
 
-        response = client.post("/api/v1/verify-otp", json={
-            "user_id": str(test_user.id),
-            "otp_code": "3333",
-            "otp_type": "email_verification"
-        })
+        response = client.post(
+            "/api/v1/verify-otp",
+            json={
+                "user_id": str(test_user.id),
+                "otp_code": "3333",
+                "otp_type": "email_verification",
+            },
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -145,4 +161,6 @@ class TestVerifyOTPService:
         assert data["data"]["user"]["id"] == str(test_user.id)
         assert data["data"]["user"]["email"] == test_user.email
         assert data["data"]["user"]["full_name"] == test_user.full_name
-        assert data["data"]["user"]["email_verified"] == True  # Should be True after verification
+        assert (
+            data["data"]["user"]["email_verified"] == True
+        )  # Should be True after verification

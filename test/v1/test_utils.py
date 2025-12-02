@@ -1,5 +1,6 @@
 """Utility functions for tests"""
 
+
 def create_mock_google_token_response(
     google_id="123456789",
     email="test@gmail.com",
@@ -7,7 +8,7 @@ def create_mock_google_token_response(
     picture="https://example.com/pic.jpg",
     email_verified=True,
     issuer="accounts.google.com",
-    audience="407408718192.apps.googleusercontent.com"
+    audience="407408718192.apps.googleusercontent.com",
 ):
     """Create a mock Google token response"""
     return {
@@ -19,7 +20,7 @@ def create_mock_google_token_response(
         "email_verified": email_verified,
         "aud": audience,
         "exp": 9999999999,
-        "iat": 1234567890
+        "iat": 1234567890,
     }
 
 

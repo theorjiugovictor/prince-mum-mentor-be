@@ -1,11 +1,10 @@
 import uuid
 from datetime import datetime
 
-import pytest
-
 
 def create_photo(db, image_url: str):
     from api.v1.models.photos import Photos
+
     photo = Photos(id=uuid.uuid4(), image_url=image_url)
     db.add(photo)
     db.commit()
@@ -15,7 +14,14 @@ def create_photo(db, image_url: str):
 
 def create_album(db, user_id, name: str = "Test Album"):
     from api.v1.models.albums import Album
-    album = Album(id=uuid.uuid4(), name=name, user_id=user_id, created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+
+    album = Album(
+        id=uuid.uuid4(),
+        name=name,
+        user_id=user_id,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
     db.add(album)
     db.commit()
     db.refresh(album)
@@ -24,7 +30,14 @@ def create_album(db, user_id, name: str = "Test Album"):
 
 def create_memory(db, album_id, photo_obj, note: str = "A memory"):
     from api.v1.models.memories import Memory
-    mem = Memory(id=uuid.uuid4(), album_id=album_id, photo=photo_obj.id, note=note, saved_on=datetime.utcnow())
+
+    mem = Memory(
+        id=uuid.uuid4(),
+        album_id=album_id,
+        photo=photo_obj.id,
+        note=note,
+        saved_on=datetime.utcnow(),
+    )
     # also set relationship if available
     try:
         mem.photo_data = photo_obj

@@ -1,7 +1,8 @@
 import pytest
+from unittest.mock import Mock, patch
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch
 
 from api.v1.routes.faq import router as faq_router
 from api.v1.services.faq import FAQService
@@ -41,13 +42,13 @@ def test_get_faqs_success(client):
     assert response.status_code == 200
     body = response.json()
 
-    assert body["status"] == 'success'
+    assert body["status"] == "success"
     assert body["data"]["data"][0]["question"] == "Mock question?"
 
 
 def test_get_faqs_incorrect_input(client):
     response = client.get("/faqs?limit=-5")
-    print('@@', response.status_code)
+    print("@@", response.status_code)
 
     assert response.status_code == 422
     assert "greater than" in response.json()["detail"][0]["msg"].lower()

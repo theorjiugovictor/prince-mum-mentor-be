@@ -172,4 +172,4 @@ def test_get_milestone_summary_with_duration(authorized_client, test_milestones)
     data = response.json()
     assert data["status"] == "success"
     assert data["data"]["created_milestones"] == 0
-    assert data["data"]["completed_milestones"] == 1 
+    assert data["data"]["completed_milestones"] == 1

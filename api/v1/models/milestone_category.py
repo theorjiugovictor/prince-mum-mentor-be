@@ -41,3 +41,4 @@ class MilestoneCategory(BaseModel):
 
     # Relationships
     milestones = relationship("Milestone", back_populates="category")
+

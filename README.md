@@ -1,4 +1,4 @@
-# **Mum Mentor AI (NORA).**
+# **Mum Mentor AI (Nora).**
 
 Nora is a digital companion designed to ensure no mother navigates parenthood alone. Our mission is to replace isolation with accessible, empathetic support—transforming motherhood from a solitary struggle into a connected, supported journey.
 

@@ -10,6 +10,7 @@ from api.db.database import get_db
 
 from api.v1.models.user.user import User, UserAuthSession, UserActivityLog
 
+from api.v1.schemas.delete_account import AccountDeletionRequest
 from api.v1.schemas.login import LoginRequest
 from api.v1.schemas.logout import LogoutResponse
 from api.v1.schemas.forgot_password import ForgotPassword
@@ -30,6 +31,7 @@ from api.v1.schemas.google_auth_schema import (
     RevokeRequest,
 )
 
+from api.v1.services.delete_account import AccountService
 from api.v1.services.user_service import UserService
 from api.v1.services.email_verification import EmailVerificationService
 from api.v1.services.email_services import send_email
@@ -43,6 +45,7 @@ from api.v1.services.google_auth import (
     GoogleVerificationResponse,
 )
 from api.v1.services.refresh_service import refresh_access_token_service
+from api.v1.services.refresh_service import _hash_token
 from api.v1.services.logout import Logout
 
 from api.utils.security import verify_password
@@ -60,6 +63,92 @@ auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 google_auth_router = APIRouter(prefix="/google", tags=["Google Authentication"])
 
 
+@auth_router.delete(
+    "/delete",
+    status_code=status.HTTP_200_OK,
+    summary="Delete user account",
+    description="Permanently delete user account and all associated data. Requires password confirmation."
+)
+async def delete_account(
+    request: AccountDeletionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete user account permanently.
+    
+    - **password**: Current password for confirmation
+    - **confirmation_phrase**: Must be exactly "DELETE MY ACCOUNT"
+    - **reason**: Optional reason for deletion (max 100 characters)
+    
+    This action cannot be undone. All user data will be permanently removed.
+    """
+    logger.info("Account deletion request for user: %s", current_user.email)
+    
+    # Check if account is already deleted
+    if current_user.is_deleted:
+        logger.warning("Attempt to delete already deleted account: %s", current_user.id)
+        return fail_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            message="Account already deleted"
+        )
+
+    # Delete account
+    success, error = AccountService.delete_user_account(
+        db, str(current_user.id), request.password, request.reason
+    )
+    
+    if not success:
+        logger.warning(
+            "Account deletion failed for user %s: %s",
+            current_user.email,
+            error
+        )
+        return fail_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            message=error
+        )
+
+    # Send confirmation email (optional)
+    try:
+        if current_user.email and not current_user.email.startswith("deleted_"):
+            subject = "Account Deletion Confirmation"
+            body = f"""Hi {current_user.full_name},
+
+Your account and all associated data have been permanently deleted from our systems.
+
+If this was a mistake or you change your mind, please contact our support team immediately.
+
+We're sorry to see you go!
+
+Best regards,
+The Nora Team"""
+            
+            await send_email(current_user.email, subject, body)
+            logger.info("Deletion confirmation email sent to: %s", current_user.email)
+    except Exception as email_error:
+        logger.error(
+            "Failed to send deletion confirmation email to %s: %s",
+            current_user.email,
+            str(email_error),
+            exc_info=True
+        )
+        # Don't fail the request if email fails
+
+    logger.info(
+        "Account successfully deleted for user: %s%s",
+        current_user.email,
+        f" (Reason: {request.reason})" if request.reason else ""
+    )
+    
+    return success_response(
+        status_code=status.HTTP_200_OK,
+        message="Account and all associated data have been permanently deleted",
+        data={
+            "deletion_time": datetime.now(timezone.utc).isoformat()
+        }
+    )
+    
 @auth_router.post(
     "/login",
     status_code=status.HTTP_200_OK,
@@ -136,7 +225,7 @@ def login_route(
 
         session = UserAuthSession(
             user_id=user.id,
-            refresh_token=refresh_token,
+            refresh_token=_hash_token(refresh_token),
             ip_address=ip_address,
             user_agent=user_agent,
             device_name=device_name,
@@ -427,8 +516,14 @@ The Nora Team"""
         500: {"description": "Internal server error"},
     },
 )
-def refresh_access_token(request: Request, db: Session = Depends(get_db)):
-    """Refresh an access token using a valid refresh token.
+def refresh_access_token(
+    payload: RefreshTokenRequest,
+    request: Request, 
+    db: Session = Depends(get_db)
+):
+    """
+    Refresh an access token using a valid refresh token.
+    
 
     Security measures implemented:
     - Validates the refresh token exists in the DB and is not revoked.
@@ -438,36 +533,34 @@ def refresh_access_token(request: Request, db: Session = Depends(get_db)):
     - Logs the refresh action in `user_activity_logs`.
     """
 
-    # Extract token from Authorization header
-    auth_header = request.headers.get("authorization") or request.headers.get(
-        "Authorization"
-    )
-    if not auth_header or not auth_header.startswith("Bearer "):
+    if not payload or not payload.refresh_token:
         return fail_response(
-            status.HTTP_401_UNAUTHORIZED, "Missing Authorization header"
+            status.HTTP_401_UNAUTHORIZED, 
+            "Missing refresh token in request body"
         )
 
-    incoming_token = auth_header.split(" ", 1)[1].strip()
-
+    incoming_token = payload.refresh_token.strip()
     device_header = request.headers.get("X-Device-Id")
     client_host = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
+
+    logger.info("Email/password refresh token request received")
 
     data, error = refresh_access_token_service(
         db, incoming_token, device_header, client_host, user_agent
     )
 
     if error:
-        # logger for errors
         logger.warning(
             "Refresh token error: %(message)s", {"message": error.get("message")}
         )
         return fail_response(
-            error.get("status_code", status.HTTP_401_UNAUTHORIZED), error.get("message")
+            error.get("status_code", status.HTTP_401_UNAUTHORIZED), 
+            error.get("message")
         )
 
-    # logger success
-    logger.info("Access token refreshed successfully.")
+    logger.info("Access token refreshed successfully for user: %s", data.get("user_id"))
+    
     return auth_response(
         status.HTTP_200_OK,
         "Access token refreshed successfully.",
@@ -544,61 +637,6 @@ async def google_login(
         ).model_dump(),
     )
 
-
-@auth_router.post(
-    "/refresh/", response_model=GoogleAuthResponse, status_code=status.HTTP_200_OK
-)
-async def refresh_token_route(
-    payload: RefreshTokenRequest, db: Session = Depends(get_db)
-):
-    """returns new access and refresh tokens given a valid refresh token
-    Args:
-        payload (RefreshRequest): takes in refresh token
-        db (Session, optional): Defaults to Depends(get_db).
-    """
-    payload_data = google_auth_service.verify_token(payload.refresh_token, refresh=True)
-    if isinstance(payload_data, JSONResponse):
-        logger.warning("Invalid refresh token attempt")
-        return payload_data
-    if not payload_data:
-        return fail_response(
-            status_code=status.HTTP_401_UNAUTHORIZED, message="Invalid refresh token"
-        )
-    sid = payload_data.get("sid")
-    user_id = payload_data.get("user_id")
-    session = (
-        db.query(UserAuthSession)
-        .filter(UserAuthSession.id == sid, UserAuthSession.is_revoked.is_(False))
-        .first()
-    )
-    logger.info("Session %s", session)
-    if not session or session.expires_at < datetime.now(timezone.utc):
-        return fail_response(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            message="Refresh token session is invalid or expired",
-        )
-    if not user_id:
-        return fail_response(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            message="Invalid refresh token payload",
-        )
-    user = google_auth_service.get_user_by_id(db, user_id)
-    if not user or isinstance(user, JSONResponse):
-        return fail_response(
-            status_code=status.HTTP_401_UNAUTHORIZED, message="User not found"
-        )
-    sid = str(session.id)
-    access_token = google_auth_service.issue_local_access_token(user=user, sid=sid)
-    refresh_token = google_auth_service.issue_local_refresh_token(user=user, sid=sid)
-    return success_response(
-        status_code=status.HTTP_200_OK,
-        message="Token refreshed successfully",
-        data=GoogleAuthResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            token_type="bearer",
-        ).model_dump(),
-    )
 
 
 @auth_router.get("/user", status_code=status.HTTP_200_OK)

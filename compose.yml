@@ -1,0 +1,20 @@
+# This is for development only - for those who'd rather use a container
+services:
+  db:
+    image: postgres:17.2-bookworm
+    volumes:
+      - nora_db:/var/lib/postgresql/data
+      - ./docker/postgresql/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    env_file: .env
+
+volumes:
+  nora_db:

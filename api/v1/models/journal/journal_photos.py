@@ -1,14 +1,18 @@
-from sqlalchemy import Column, String, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
-from api.db.base_model import BaseModel
 import uuid
+from typing import TYPE_CHECKING
+from sqlalchemy import String, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from api.db.base_model import BaseModel
+
+if TYPE_CHECKING:
+    from api.v1.models.journal.journal import Journal
 
 class JournalPhoto(BaseModel):
     __tablename__ = "journal_photos"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    journal_id = Column(UUID(as_uuid=True), ForeignKey("journal.id"), nullable=False)
-    url = Column(String, nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    
+    journal_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("journal.id"), nullable=False)
+    url: Mapped[str] = mapped_column(String, nullable=False)
 
-    journal = relationship("Journal", back_populates="photos")
+    journal: Mapped["Journal"] = relationship("Journal", back_populates="photos")

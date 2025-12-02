@@ -24,7 +24,7 @@ on:
 jobs:
   test:
     name: Run Tests
-    runs-on: [self-hosted, hng-13-runner]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -52,7 +52,7 @@ jobs:
           pytest -v || echo "No tests found yet"
   deploy-staging:
     name: Deploy to Staging (Auto)
-    runs-on: [self-hosted, hng-13-runner]
+    runs-on: ubuntu-latest
     needs: test
     environment: staging
     if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
@@ -170,7 +170,7 @@ jobs:
           EOF
   deploy-production:
     name: Deploy to Production (Manual)
-    runs-on: [self-hosted, hng-13-runner]
+    runs-on: ubuntu-latest
     needs: test
     # Only allow manual production deploys via workflow_dispatch and require
     # the 'target' input be 'production'. Protect the production environment

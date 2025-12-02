@@ -56,6 +56,6 @@ class RenameAlbumRequest(BaseModel):
     name: str
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {"name": "My Updated Album Name"}
         }

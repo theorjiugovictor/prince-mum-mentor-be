@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from api.v1.models.community.post_photos import PostPhoto
     from api.v1.models.community.post_likes import PostLike
     from api.v1.models.community.post_comments import PostComment
+    from api.v1.models.user.user import User
 
 class Post(BaseModel):
     __tablename__ = "posts"
@@ -24,6 +25,7 @@ class Post(BaseModel):
     views: Mapped[int] = mapped_column(Integer, default=0)
 
     # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="posts") 
     photos: Mapped[list["PostPhoto"]] = relationship("PostPhoto", back_populates="post", cascade="all, delete-orphan")
     likes: Mapped[list["PostLike"]] = relationship("PostLike", back_populates="post", cascade="all, delete-orphan")
     comments: Mapped[list["PostComment"]] = relationship("PostComment", back_populates="post", cascade="all, delete-orphan")

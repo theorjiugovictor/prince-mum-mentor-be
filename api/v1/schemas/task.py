@@ -75,3 +75,10 @@ class TaskResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class ListTasksQuery(BaseModel):
+    page: int = Field(1, ge=1, description="Page number")
+    per_page: int = Field(10, ge=1, le=100, description="Items per page")
+    task_status: Optional[str] = Field(None, description="Filter by status")
+    order_by: Optional[str] = Field("due_date", description="Field to order by: due_date, created_at, updated_at, name, status")
+    order_direction: Optional[str] = Field("asc", description="Order direction: asc or desc")

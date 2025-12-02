@@ -1,0 +1,37 @@
+# for development (for now)
+
+[project]
+name = "mum-mentor-be"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12.7"
+dependencies = [
+    "aiosmtplib>=5.0.0",
+    "alembic==1.13.1",
+    "bcrypt==4.1.2",
+    "email-validator==2.1.0.post1",
+    "fastapi==0.109.0",
+    "google-auth>=2.23.0",
+    "google-auth-httplib2>=0.1.1",
+    "google-auth-oauthlib>=1.1.0",
+    "httpx==0.26.0",
+    "passlib[bcrypt]==1.7.4",
+    "pillow==10.1.0",
+    "psycopg2-binary==2.9.9",
+    "pydantic==2.5.3",
+    "pydantic-settings==2.1.0",
+    "pyjwt>=2.10.1",
+    "pytest==7.4.4",
+    "pytest-asyncio==0.23.3",
+    "pytest-cov==4.1.0",
+    "pytest-mock>=3.15.1",
+    "python-dotenv==1.0.0",
+    "python-jose[cryptography]>=3.5.0",
+    "python-multipart==0.0.6",
+    "requests>=2.31.0",
+    "sentry-sdk[fastapi]==1.40.0",
+    "sqlalchemy==2.0.25",
+    "user-agents>=2.2.0",
+    "uvicorn[standard]==0.27.0",
+]

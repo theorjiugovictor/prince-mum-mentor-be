@@ -1,3 +1,8 @@
+
+"""
+This module contains the API endpoints for managing the waitlist.
+"""
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from api.v1.schemas.waitlist import WaitlistCreate
@@ -8,11 +13,14 @@ from api.utils.responses import success_response, fail_response
 from api.utils.deps import get_admin_user
 from api.v1.models.user.user import User
 
-router = APIRouter()
+router = APIRouter(tags=["Waitlist"])
 
 
 @router.post("/waitlist", status_code=status.HTTP_201_CREATED)
 async def join_waitlist(data: WaitlistCreate, db: Session = Depends(get_db)):
+    """
+    Adds a new user to the waitlist.
+    """
     new_entry, existing_entry = create_waitlist_entry(db, data)
 
     if existing_entry:
@@ -63,40 +71,38 @@ Welcome to Nora — we're so happy you're here."""
 @router.delete("/waitlist/{waitlist_id}", status_code=status.HTTP_200_OK)
 async def delete_waitlist_user(
     waitlist_id: str,
-    admin: User = Depends(get_admin_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: User = Depends(get_admin_user),
 ):
     """
     Admin endpoint to delete a waitlist entry.
     Only authorized admin users can perform this action.
-    
+
     Args:
         waitlist_id: UUID of the waitlist entry to delete
-        admin: Admin user (automatically verified by dependency)
         db: Database session
-        
+
     Returns:
         Success response with deleted entry details or error message
     """
     deleted_entry, error = delete_waitlist_entry(db, waitlist_id)
-    
+
     if error:
         if error == "Waitlist entry not found":
             return fail_response(
                 status_code=status.HTTP_404_NOT_FOUND,
                 message=error,
             )
-        elif error == "Invalid waitlist ID format":
+        if error == "Invalid waitlist ID format":
             return fail_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 message=error,
             )
-        else:
-            return fail_response(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                message=error,
-            )
-    
+        return fail_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            message=error,
+        )
+
     return success_response(
         status_code=status.HTTP_200_OK,
         message="Waitlist entry deleted successfully",

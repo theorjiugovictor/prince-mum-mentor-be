@@ -2,7 +2,10 @@ from typing import Tuple, Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
-from api.v1.models.user.user import User, UserProfile, UserSettings, UserAuthSession, UserOTPVerification, EmailVerificationToken, UserActivityLog
+from api.v1.models.user.user import (
+    User, UserProfile, UserSettings, 
+    UserAuthSession, UserOTPVerification, 
+    EmailVerificationToken, UserActivityLog)
 from api.utils.security import verify_password
 from api.utils.logger import logger
 
@@ -13,7 +16,8 @@ class AccountService:
     def delete_user_account(
         db: Session,
         user_id: str,
-        password: str
+        password: str,
+        reason: Optional[str] = None
     ) -> Tuple[bool, Optional[str]]:
         """
         Permanently delete user account and all associated data
@@ -22,6 +26,7 @@ class AccountService:
             db: Database session
             user_id: User ID to delete
             password: User password for confirmation
+            reason: Optional reason for account deletion
             
         Returns:
             Tuple of (success, error_message)
@@ -44,7 +49,7 @@ class AccountService:
                 return False, "Account already deleted"
 
             # Perform deletion in transaction
-            return AccountService._delete_user_data(db, user)
+            return AccountService._delete_user_data(db, user, reason)
 
         except Exception as e:
             db.rollback()
@@ -57,10 +62,26 @@ class AccountService:
             return False, "An error occurred during account deletion"
 
     @staticmethod
-    def _delete_user_data(db: Session, user: User) -> Tuple[bool, Optional[str]]:
+    def _delete_user_data(db: Session, user: User, reason: Optional[str] = None) -> Tuple[bool, Optional[str]]:
         """Delete all user data in transaction"""
         try:
             deletion_time = datetime.now(timezone.utc)
+
+            # Log deletion activity with reason if provided
+            activity_metadata = {
+                "status": "account_deleted",
+                "deletion_time": deletion_time.isoformat()
+            }
+            if reason:
+                activity_metadata["deletion_reason"] = reason
+            
+            # Create activity log before deleting other data
+            deletion_log = UserActivityLog(
+                user_id=user.id,
+                activity_type="account_deletion",
+                activity_metadata=activity_metadata
+            )
+            deletion_log.insert(db)
 
             # 1. Delete related records
             AccountService._delete_user_related_data(db, user.id)
@@ -77,7 +98,11 @@ class AccountService:
             
             user.update(db)
 
-            logger.info("Account successfully deleted for user: %s", user.id)
+            logger.info(
+                "Account successfully deleted for user: %s%s",
+                user.id,
+                f" (Reason: {reason})" if reason else ""
+            )
             return True, None
 
         except Exception as e:

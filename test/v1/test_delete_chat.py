@@ -1,8 +1,9 @@
+import uuid
 import pytest
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-import uuid
 
 from main import app
 
@@ -18,6 +19,7 @@ TEST_DATABASE_URL = "sqlite:///./test_chat_delete.db"
 engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 def override_get_db():
     db = TestingSessionLocal()
     try:
@@ -25,7 +27,9 @@ def override_get_db():
     finally:
         db.close()
 
+
 app.dependency_overrides[get_db] = override_get_db
+
 
 @pytest.fixture(scope="function")
 def client():
@@ -33,6 +37,7 @@ def client():
     Base.metadata.create_all(bind=engine)
     yield TestClient(app)
     Base.metadata.drop_all(bind=engine)
+
 
 @pytest.fixture(scope="function")
 def test_user(client):
@@ -43,9 +48,10 @@ def test_user(client):
     db.commit()
     db.refresh(user)
     db.close()
-    
+
     app.dependency_overrides[get_current_user] = lambda: user
     return user
+
 
 @pytest.fixture(scope="function")
 def user_chat(client, test_user):
@@ -59,9 +65,10 @@ def user_chat(client, test_user):
     db.close()
     return chat_id
 
+
 def test_delete_conversation_success(client, test_user, user_chat):
     """
-    Requirement: When a valid conversation ID is provided, 
+    Requirement: When a valid conversation ID is provided,
     the conversation is successfully deleted.
     """
     response = client.delete(f"/api/v1/ai-chat/chats/{user_chat}")
@@ -74,17 +81,19 @@ def test_delete_conversation_success(client, test_user, user_chat):
     db.close()
     assert exists is None
 
+
 def test_delete_conversation_not_found(client, test_user):
     """
-    Requirement: If the conversation does not exist, 
+    Requirement: If the conversation does not exist,
     return 404 Conversation Not Found.
     """
     random_id = uuid.uuid4()
-    
+
     response = client.delete(f"/api/v1/ai-chat/chats/{random_id}")
 
     assert response.status_code == 404
     assert response.json()["message"] == "Conversation not found"
+
 
 def test_delete_conversation_idempotency(client, test_user, user_chat):
     """
@@ -97,17 +106,18 @@ def test_delete_conversation_idempotency(client, test_user, user_chat):
     assert response_2.status_code == 404
     assert response_2.json()["message"] == "Conversation not found"
 
+
 def test_delete_other_users_chat(client, test_user):
     """
     Requirement: Must verify that the conversation belongs to the requesting user.
     If not, it should behave like a 404 (Security).
     """
     db = TestingSessionLocal()
- 
+
     other_user = User(full_name="Other User", email="other@user.com", is_active=True)
     db.add(other_user)
     db.commit()
-    
+
     other_chat = ChatSession(user_id=other_user.id, title="Secret Chat")
     db.add(other_chat)
     db.commit()

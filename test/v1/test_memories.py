@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime, timezone
-
 import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import MagicMock
+
+from fastapi.testclient import TestClient
 
 from main import app
 from api.v1.models.user.user import User
@@ -77,7 +77,9 @@ def test_create_memory_success(mock_db_session, monkeypatch):
         ((None, (500, "Failed to create memory")), 500),
     ],
 )
-def test_create_memory_errors(mock_db_session, monkeypatch, error_tuple, expected_status):
+def test_create_memory_errors(
+    mock_db_session, monkeypatch, error_tuple, expected_status
+):
     user = _make_user()
     app.dependency_overrides[get_current_user] = lambda: user
 
@@ -124,7 +126,9 @@ def test_delete_memory_success(mock_db_session, monkeypatch):
         ((False, (500, "Failed to delete memory")), 500),
     ],
 )
-def test_delete_memory_errors(mock_db_session, monkeypatch, service_return, expected_status):
+def test_delete_memory_errors(
+    mock_db_session, monkeypatch, service_return, expected_status
+):
     user = _make_user()
     app.dependency_overrides[get_current_user] = lambda: user
 

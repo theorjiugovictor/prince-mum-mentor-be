@@ -11,7 +11,7 @@ from main import app
 from api.db.database import get_db
 from api.db.base_model import Base
 from api.v1.models.user.user import User
-from api.v1.models.task.task import Task
+from api.v1.models.task import Task
 from api.utils.deps import get_current_user
 from api.utils.security import hash_password
 

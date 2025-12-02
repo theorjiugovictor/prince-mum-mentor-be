@@ -1,11 +1,11 @@
-from datetime import datetime, timezone, timedelta, date
-
+import uuid
 import pytest
+from datetime import date
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-import uuid
 
 from main import app
 from api.db.database import get_db
@@ -22,11 +22,7 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 
-TestingSessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base.metadata.create_all(bind=engine)
 
@@ -83,6 +79,7 @@ def setup_database():
 
     Base.metadata.drop_all(bind=engine)
 
+
 @pytest.fixture(scope="function")
 def pre_existing_profile():
     """Helper to create a profile BEFORE we try to update it"""
@@ -90,7 +87,7 @@ def pre_existing_profile():
         "mom_status": "pregnant",
         "goals": ["Sleep"],
         "partner": {"name": "Dad", "email": "dad@test.com"},
-        "children": []
+        "children": [],
     }
     client.post("/api/v1/profile-setup/", json=payload)
     return payload
@@ -103,17 +100,14 @@ class TestProfileSetup:
         payload = {
             "mom_status": "pregnant",
             "goals": ["healthy pregnancy", "exercise"],
-            "partner": {
-                "name": "John Doe",
-                "email": "partner@example.com"
-            },
+            "partner": {"name": "John Doe", "email": "partner@example.com"},
             "children": [
                 {
                     "full_name": "Baby One",
                     "date_of_birth": "2020-01-01",
-                    "gender": "female"
+                    "gender": "female",
                 }
-            ]
+            ],
         }
 
         response = client.post("/api/v1/profile-setup/", json=payload)
@@ -130,7 +124,7 @@ class TestProfileSetup:
             "mom_status": "mixed",
             "goals": ["stay active"],
             "partner": None,
-            "children": []
+            "children": [],
         }
 
         # First attempt → success
@@ -215,7 +209,6 @@ class TestProfileSetup:
         assert response.status_code in (401, 403)
         app.dependency_overrides[get_current_user] = override_get_current_user
 
-
     def test_update_children_list(self, setup_database, pre_existing_profile):
         """Test 2: Add a child (verify list replacement logic)"""
 
@@ -224,7 +217,7 @@ class TestProfileSetup:
                 {
                     "full_name": "New Baby",
                     "gender": "male",
-                    "date_of_birth": str(date.today())
+                    "date_of_birth": str(date.today()),
                 }
             ]
         }

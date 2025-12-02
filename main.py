@@ -4,13 +4,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from api.utils.responses import validation_error_response
 from api.v1.routes import app as api_v1_router
+from api.middleware.correlation_middleware import CorrelationIdMiddleware
 from collections import defaultdict
+from api.utils.limiter import RateLimiter
 
 import logging
 
-
 from api.utils.exception_handlers import (request_validation_exception_handler, http_exception_handler)
-from api.v1.routes.gallery_search import router as search_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,7 +24,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/api/redoc"
 )
+app.add_middleware(RateLimiter, limit="200/minute")
 
+app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,6 +34,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -46,7 +49,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return validation_error_response(dict(formatted_errors))
 
 app.include_router(api_v1_router, prefix="/api/v1")
-app.include_router(search_router, prefix="/api")
+
 
 # Mount static files for serving uploaded images
 app.mount("/static", StaticFiles(directory="uploads"), name="static")
@@ -58,7 +61,7 @@ app.add_exception_handler(RequestValidationError, request_validation_exception_h
 app.add_exception_handler(HTTPException, http_exception_handler)
 
 
-@app.get("/")
+@app.get("/", tags=["Home"])
 async def read_root():
     return {
         "message": "Welcome to Mum Mentor AI (NORA) API",
@@ -66,6 +69,6 @@ async def read_root():
         "status": "running"
     }
 
-@app.get("/health")
+@app.get("/health", tags=["Home"])
 async def health_check():
     return {"status": "healthy"}

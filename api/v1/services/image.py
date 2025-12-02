@@ -41,9 +41,9 @@ class ImageService:
             except Exception:
                 return fail_response(message="Image compression failed", status_code=500)
 
-        # Build full URL (no double slash)
+        # Build full URL - CHANGED from /download/ to /serve/
         base_url = str(request.base_url).rstrip("/")
-        image_url = f"{base_url}/api/v1/images/download/{filename}"
+        image_url = f"{base_url}/api/v1/images/serve/{filename}"
 
         # Save to database
         photo = Photos(image_url=image_url, id=unq)
@@ -63,32 +63,24 @@ class ImageService:
         if not photo:
             return fail_response(
                 message=f"Image not found {photo_id}",
-                status_code=500
+                status_code=404
             )
-        print("\n\n\n", photo, "\n\n\n")
-        # Delete db record
-        db.delete(photo)
-        db.commit()
-
-        image_url= photo.image_url
-            # Extract filename from URL
-        filename =  image_url.split("/")[-1]
-        if not photo:
-            return fail_response(message="Photo not found", status_code=404)
-
+        
+        # Extract filename from URL
+        image_url = photo.image_url
+        filename = image_url.split("/")[-1]
         file_path = os.path.join(UPLOAD_DIR, filename)
 
         # Delete file if exists
         if os.path.exists(file_path):
             os.remove(file_path)
-        else:
-            return fail_response(message="File not found", status_code=404)
 
         # Delete db record
         db.delete(photo)
         db.commit()
 
         return success_response(message="File deleted successfully", status_code=204)
+    
     @staticmethod
     def delete_all_photos(db: Session) -> JSONResponse | None:
         photos = db.query(Photos).all()
@@ -97,8 +89,8 @@ class ImageService:
         
         for photo in photos:
             # Delete file from storage
-            image_url= photo.image_url
-            filename =  image_url.split("/")[-1]
+            image_url = photo.image_url
+            filename = image_url.split("/")[-1]
             file_path = os.path.join(UPLOAD_DIR, filename)
 
             if os.path.exists(file_path):
@@ -118,7 +110,7 @@ class ImageService:
             message="Photo retrieved successfully",
             data={"id": photo.id, "image_url": photo.image_url},
             status_code=200
-        ) if photo else fail_response(message="Photo not found", status_code=404)
+        )
     
     @staticmethod
     def get_all_photos(db: Session) -> JSONResponse:

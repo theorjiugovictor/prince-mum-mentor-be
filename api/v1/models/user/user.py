@@ -3,8 +3,11 @@ from datetime import datetime, date, time, timezone
 from sqlalchemy import Boolean, String, Text, DateTime, Date, Time, ForeignKey, Integer, JSON, ARRAY
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from api.db.base_model import BaseModel, Base
+from typing import TYPE_CHECKING
 
 
+if TYPE_CHECKING:
+    from api.v1.models.community.posts import Post
 
 class User(BaseModel):
     __tablename__ = "users"
@@ -30,7 +33,7 @@ class User(BaseModel):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-    # Relationships
+    # Relationships    
     profile = relationship("UserProfile", back_populates="user", uselist=False)
     settings = relationship("UserSettings", back_populates="user", uselist=False)
     sessions = relationship("UserAuthSession", back_populates="user")
@@ -38,6 +41,7 @@ class User(BaseModel):
     activities = relationship("UserActivityLog", back_populates="user")
     verification_tokens = relationship("EmailVerificationToken", back_populates="user")
     tasks = relationship("Task", back_populates="user")
+    posts: Mapped[list["Post"]] = relationship("Post", back_populates="user")
 
 
 
